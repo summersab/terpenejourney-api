@@ -1,4 +1,5 @@
 const serverless = require("serverless-http");
+const os = require('os');
 const express = require("express");
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
@@ -142,11 +143,12 @@ app.get('/user', (req, res) => {
 	});
 });
 
-/***/
-app.listen(port, () => {
-	console.log('Express is listening on port 3000');
-});
-/***/
+// Prevent from launching express on AWS Lambda
+if (! os.userInfo().username.startsWith('sbx_user')) {
+	app.listen(port, () => {
+		console.log('Express is listening on port 3000');
+	});
+}
 
 function parseCookies (str) {
 	let cookies = {};
