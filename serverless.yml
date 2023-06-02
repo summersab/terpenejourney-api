@@ -1,0 +1,66 @@
+service: dutchie-native
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  stage: prod
+  region: us-east-1
+  httpApi:
+    cors: true
+    #disableDefaultEndpoint: true
+    #metrics: true
+
+functions:
+  app:
+    handler: index.handler
+    memorySize: 128
+    url:
+      cors:
+        allowedOrigins:
+          - 'https://tj-the-revolution-6206508ef5c2d17ee4134.webflow.io'
+        allowCredentials: true
+    events:
+    - httpApi:
+        method: GET
+        path: /cors
+    - httpApi:
+        method: GET
+        path: '/cors/{proxy+}'
+    - httpApi:
+        method: POST
+        path: /login
+    - httpApi:
+        method: POST
+        path: '/login/{proxy+}'
+    - httpApi:
+        method: GET
+        path: /user
+    - httpApi:
+        method: GET
+        path: '/user/{proxy+}'
+    - httpApi:
+        method: GET
+        path: /orders
+    - httpApi:
+        method: GET
+        path: '/orders/{proxy+}'
+    - httpApi:
+        method: GET
+        path: /menu
+    - httpApi:
+        method: GET
+        path: '/menu/{proxy+}'
+
+
+#plugins:
+#  - serverless-domain-manager
+
+#custom:
+#  customDomain:
+#    domainName: api.terpenejourney.com
+#    certificateName: '*.terpenejourney.com'
+#    apiType: rest
+#    basePath: ''
+#    stage: prod
+#    endpointType: REGIONAL
