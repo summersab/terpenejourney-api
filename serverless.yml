@@ -28,23 +28,41 @@ functions:
         method: GET
         path: '/cors/{proxy+}'
     - httpApi:
+        method: GET
+        path: /users
+    - httpApi:
+        method: GET
+        path: '/users/{proxy+}'
+    - httpApi:
         method: POST
-        path: /login
+        path: /users
     - httpApi:
         method: POST
-        path: '/login/{proxy+}'
+        path: '/users/{proxy+}'
+    - httpApi:
+        method: PUT
+        path: /users/{param}
+    - httpApi:
+        method: PUT
+        path: '/users/{param}/{proxy+}'
+    - httpApi:
+        method: POST
+        path: /users/login
+    - httpApi:
+        method: POST
+        path: '/users/login/{proxy+}'
     - httpApi:
         method: GET
-        path: /user
+        path: /users/{param}/orders
     - httpApi:
         method: GET
-        path: '/user/{proxy+}'
+        path: '/users/{param}/orders/{proxy+}'
     - httpApi:
-        method: GET
-        path: /orders
+        method: POST
+        path: /users/{param1}/orders/{param2}
     - httpApi:
-        method: GET
-        path: '/orders/{proxy+}'
+        method: POST
+        path: '/users/{param1}/orders/{param2}/{proxy+}'
     - httpApi:
         method: GET
         path: /menu
