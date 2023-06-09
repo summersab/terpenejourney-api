@@ -23,7 +23,23 @@ class Foxy {
 		});
 	}
 
-	async validateCustomer(email, password) {
+	async validateCustomer(email, password, customer = null) {
+		if (customer === null) {
+			const customer = this.customerExists(email)
+		}
+
+		if (customer !== false) {
+			const storedHash = customer.password_hash;
+
+			if (hasher.CheckPassword(password, storedHash)) {
+				return customer;
+			}
+		}
+	
+		return false;
+	}
+
+	async customerExists(email) {
 		const customersNode = this.client.follow('fx:store').follow('fx:customers');
 		const customersResponse = await customersNode.get({
 			filters: [
@@ -32,16 +48,10 @@ class Foxy {
 			]
 		});
 
-
 		const customers = await customersResponse.json();
 
 		if (customers.total_items == 1) {
-			const customer = customers._embedded["fx:customers"].pop()
-			const storedHash = customer.password_hash;
-
-			if (hasher.CheckPassword(password, storedHash)) {
-				return customer;
-			}
+			return customers._embedded["fx:customers"].pop()
 		}
 	
 		return false;

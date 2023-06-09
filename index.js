@@ -13,6 +13,7 @@ const Foxy = require('./foxy-client');
 const cookieKey = process.env.cookieKey;
 const token = 'public-eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJBUEktQ0xJRU5UIiwiZXhwIjozMzIwNjYyNjg4NSwiaWF0IjoxNjQ5NzE4MDg1LCJpc3MiOiJodHRwczovL2R1dGNoaWUuY29tIiwianRpIjoiNzVkMzcyOGUtYTRkOC00MTliLTg5YzktNmI2MzRkOWVjOWRhIiwiZW50ZXJwcmlzZV9pZCI6IjE3MmY2NWMzLTczZTctNDU5ZC1hZTM1LTA4OTdiMjE2MDI3OCIsInV1aWQiOiI2NzVmYWRlOC03YWU3LTQ2NmEtOTAyYS1iOTQ4NjQ0ZjhmMWYifQ.JcqHRAMTyB_cF6uVQ-4toM3K3njIkX-dMvUUfxznIrY';
 const retailerId = "48763c11-5642-48ed-9b17-17852c4fd88f";
+const dispensaryId = "624d9bb115779400a5b3e4f4";
 
 const foxy_client_id     = process.env.foxy_client_id;
 const foxy_client_secret = process.env.foxy_client_secret;
@@ -34,7 +35,7 @@ const sameSiteCookieOpts = {
 	sameSite: 'none'
 }
 
-const dutchie = new Dutchie(retailerId, token);
+const dutchie = new Dutchie(retailerId, dispensaryId, token);
 const foxy = new Foxy(foxy_refresh_token, foxy_client_secret, foxy_client_id);
 
 const corsOptions = {
@@ -55,12 +56,11 @@ app.get('/cors', (req, res) => {
 	res.send('')
 });
 
-app.post('/login', (req, res) => {
+app.post('/users/login', (req, res) => {
 	let post = req.body;
 	let cookies = parseCookies(req.headers.cookie);
 
 	dutchie.loginConsumer(post.email, post.password).then(response => {
-		response = stripTypename(response);
 		delete(response.data.loginConsumer.transferToken);
 
 		if (cookies.dutchie_access_token == '-1') {
@@ -77,20 +77,52 @@ app.post('/login', (req, res) => {
 			res.cookie('dutchie_user_id', response.data.loginConsumer.user.id, sameSiteCookieOpts);
 		}
 
-		if (post.redirect) {
-			res.redirect(post.redirect);
-		}
-		else {
-			res.send(JSON.stringify(response));
-		}
-	}).catch(error => {
+		res.redirect(handleRedirect(req, post.redirect));
+		res.send(JSON.stringify(response));
+	},(req)).catch(error => {
 		if (dutchie.errorStatus(error) == 422) {
 			foxy.validateCustomer(post.email, post.password).then(customer => {
 				if (customer) {
-					customer._links['fx:transactions'].get()
+					customer._links['fx:transactions'].get({
+						zoom: [ 'custom_fields', 'billing_addresses' ],
+						sort: [ "order=transaction_date desc" ],
+					})
 						.then(transactionsResponse =>
 							transactionsResponse.json()
 						).then(transactions => {
+							const transaction = transactions._embedded['fx:transactions'][transactions._embedded['fx:transactions'].length - 1];
+							let birthday = sms_subscribe = newsletter_subscribe = null;
+
+							transaction._embedded['fx:custom_fields'].forEach(function(field, key) {
+								switch(field.name) {
+									case 'birthday':
+									  birthday = field.value;
+									  break;
+									case 'sms_subscribe':
+										textNotifications = field.value;
+									  break;
+									case 'newsletter_subscribe':
+										emailNotifications = field.value;
+								  }
+							});
+
+							dutchie.consumerSignup(
+								post.email,
+								post.password,
+								birthday,
+								emailNotifications,
+								post.firstName,
+								post.lastName,
+								post.phone,
+								textNotifications
+							).then(response => {
+					
+								res.send(JSON.stringify(response));
+							}).catch(error => {
+								res.status(dutchie.errorStatus(error));
+								res.send(JSON.stringify(error));
+							});
+
 							res.send(transactions);
 						});
 				}
@@ -103,51 +135,133 @@ app.post('/login', (req, res) => {
 			res.send(JSON.stringify(error));
 		}
 	});
-
-
 });
 
-app.get('/menu', (req, res) => {
-	dutchie.menuQuery().then(response => {
-		response = stripTypename(response);
-		res.send(JSON.stringify(response));
-	}).catch(error => {
-		res.status(dutchie.errorStatus(error));
-		res.send(JSON.stringify(error));
-	});
-});
-
-app.get('/orders', (req, res) => {
-	let cookies = parseCookies(req.headers.cookie);
-	dutchie.accessToken = cookies.dutchie_access_token;
-
-	dutchie.filteredOrders({"userId":cookies.dutchie_user_id}, {"sortBy":"createdAt","sortDirection":"desc"}, {"limit":20}).then(response => {
-		response = stripTypename(response);
-		res.send(JSON.stringify(response));
-	}).catch(error => {
-		res.status(dutchie.errorStatus(error));
-		res.send(JSON.stringify(error));
-	});
-});
-
-app.get('/user', (req, res) => {
+// Get a user account using cookies to resolve the ID
+app.get('/users', (req, res) => {
 	let cookies = parseCookies(req.headers.cookie);
 	dutchie.accessToken = cookies.dutchie_access_token;
 
 	dutchie.meConsumer().then(response => {
-		response = stripTypename(response);
 		res.send(JSON.stringify(response));
 	}).catch(error => {
 		res.status(dutchie.errorStatus(error));
 		res.send(JSON.stringify(error));
 	});
 });
+
+// Create a new user
+// TODO: check to see if the user exists in Foxy, first
+app.post('/users', (req, res) => {
+	let post = req.body;
+
+	post.email = post.field[3];
+	post.phone = post.field[2];
+	post.firstName = post.field[0];
+	post.lastName = post.field[1];
+	post.birthday = post.Date;
+	post.emailNotifications = post["checkbox-2"][0] == "on" ? true : false;
+	post.textNotifications = post["checkbox-2"][1] == "on" ? true : false;
+	post.password = post["password-2"];
+
+	foxy.customerExists(post.email).then(foxyCustomer => {
+		if (foxyCustomer) {
+			foxy.validateCustomer(post.email, post.password, foxyCustomer).then(foxyValidCustomer => {
+				if (! foxyValidCustomer) {
+					var i = 1;
+					// return an error, reset the password, etc
+				}
+			});
+		}
+
+		dutchie.consumerSignup(
+			post.email,
+			post.password,
+			post.birthday,
+			post.emailNotifications,
+			post.firstName,
+			post.lastName,
+			post.phone,
+			post.textNotifications
+		).then(response => {
+			res.send(JSON.stringify(response));
+		}).catch(error => {
+			res.status(dutchie.errorStatus(error));
+			res.send(JSON.stringify(error));
+		});
+	});
+});
+
+// Update user
+// TODO: implement method
+app.put('/users/:id', (req, res) => {
+});
+
+// Get all orders for a user
+app.get('/users/:id/orders', (req, res) => {
+	let userId = req.params.id;
+	let cookies = parseCookies(req.headers.cookie);
+	dutchie.accessToken = cookies.dutchie_access_token;
+
+	dutchie.filteredOrders({"userId":userId}, {"sortBy":"createdAt","sortDirection":"desc"}, {"limit":20}).then(response => {
+		res.send(JSON.stringify(response));
+	}).catch(error => {
+		res.status(dutchie.errorStatus(error));
+		res.send(JSON.stringify(error));
+	});
+});
+
+// Submit an order
+app.post('/users/:userId/orders/:orderId', (req, res) => {
+	let userId = req.params.userId;
+	let orderId = req.params.orderId;
+	let cookies = parseCookies(req.headers.cookie);
+	dutchie.accessToken = cookies.dutchie_access_token;
+
+	dutchie.createOrder(orderId, userId).then(response => {
+//	dutchie.createOrder({"userId":userId}, {"sortBy":"createdAt","sortDirection":"desc"}, {"limit":20}).then(response => {
+		res.send(JSON.stringify(response));
+	}).catch(error => {
+		res.status(dutchie.errorStatus(error));
+		res.send(JSON.stringify(error));
+	});
+});
+
+
+app.get('/menu', (req, res) => {
+	dutchie.menuQuery().then(response => {
+		res.send(JSON.stringify(response));
+	}).catch(error => {
+		res.status(dutchie.errorStatus(error));
+		res.send(JSON.stringify(error));
+	});
+});
+
 
 // Prevent from launching express on AWS Lambda
 if (! os.userInfo().username.startsWith('sbx_user')) {
 	app.listen(port, () => {
 		console.log('Express is listening on port 3000');
 	});
+}
+
+function handleRedirect(req, redirect) {
+	if (typeof(redirect) === 'undefined') {
+		return req.headers.origin;
+	}
+	else if (redirect.startsWith(req.headers.origin)) {
+		return redirect;
+	}
+	else if (redirect.startsWith("./")) {
+		return req.headers.origin + req.url + "/" + redirect;
+	}
+	else {
+		if (! redirect.startsWith("/")) {
+			redirect = "/" + redirect;
+		}
+
+		return req.headers.origin + redirect;
+	}
 }
 
 function parseCookies (str) {
@@ -176,20 +290,20 @@ function parseCookies (str) {
 	return cookies;
 }
 
-function stripTypename(obj) {
-	for (var prop in obj) {
-		if (obj[prop] !== null && typeof(obj[prop]) === 'object') {
-			obj[prop] = stripTypename(obj[prop]);
-		}
-		else if (prop == '__typename') {
-			delete(obj[prop]);
-		}
-		else if (prop.substring(0,1) == '_' && prop.substring(1) != '_' && typeof(obj[prop.substring(1)]) === 'undefined') {
-			obj[prop.substring(1)] = obj[prop];
-			delete(obj[prop]);
-		}
-	}
-	return obj
+// Debug
+function __LINE__() {
+	let e = new Error();
+	let frame = e.stack.split("\n")[2]; // change to 3 for grandparent func
+	let lineNumber = frame.split(":").reverse()[1];
+	return lineNumber;
 }
+
+function __FUNCTION__() {
+	let e = new Error();
+	let frame = e.stack.split("\n")[2]; // change to 3 for grandparent func
+	let functionName = frame.split(" ")[5];
+	return functionName;
+}
+
 
 module.exports.handler = serverless(app);
