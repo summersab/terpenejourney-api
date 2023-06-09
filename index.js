@@ -56,6 +56,66 @@ app.get('/cors', (req, res) => {
 	res.send('')
 });
 
+// Get a user account using cookies to resolve the ID
+app.get('/users', (req, res) => {
+	let cookies = parseCookies(req.headers.cookie);
+	dutchie.accessToken = cookies.dutchie_access_token;
+
+	dutchie.meConsumer().then(response => {
+		res.send(JSON.stringify(response));
+	}).catch(error => {
+		res.status(dutchie.errorStatus(error));
+		res.send(JSON.stringify(error));
+	});
+});
+
+// Create a new user
+// TODO: check to see if the user exists in Foxy, first
+app.post('/users', (req, res) => {
+	let post = req.body;
+
+	post.email = post.field[3];
+	post.phone = post.field[2];
+	post.firstName = post.field[0];
+	post.lastName = post.field[1];
+	post.birthday = post.Date;
+	post.emailNotifications = post["checkbox-2"][0] == "on" ? true : false;
+	post.textNotifications = post["checkbox-2"][1] == "on" ? true : false;
+	post.password = post["password-2"];
+
+	foxy.customerExists(post.email).then(foxyCustomer => {
+		if (foxyCustomer) {
+			foxy.validateCustomer(post.email, post.password, foxyCustomer).then(foxyValidCustomer => {
+				if (! foxyValidCustomer) {
+					var i = 1;
+					// return an error, reset the password, etc
+				}
+			});
+		}
+
+		dutchie.consumerSignup(
+			post.email,
+			post.password,
+			post.birthday,
+			post.emailNotifications,
+			post.firstName,
+			post.lastName,
+			post.phone,
+			post.textNotifications
+		).then(response => {
+			res.send(JSON.stringify(response));
+		}).catch(error => {
+			res.status(dutchie.errorStatus(error));
+			res.send(JSON.stringify(error));
+		});
+	});
+});
+
+// Update user
+// TODO: implement method
+app.put('/users/:id', (req, res) => {
+});
+
 app.post('/users/login', (req, res) => {
 	let post = req.body;
 	let cookies = parseCookies(req.headers.cookie);
@@ -135,66 +195,6 @@ app.post('/users/login', (req, res) => {
 			res.send(JSON.stringify(error));
 		}
 	});
-});
-
-// Get a user account using cookies to resolve the ID
-app.get('/users', (req, res) => {
-	let cookies = parseCookies(req.headers.cookie);
-	dutchie.accessToken = cookies.dutchie_access_token;
-
-	dutchie.meConsumer().then(response => {
-		res.send(JSON.stringify(response));
-	}).catch(error => {
-		res.status(dutchie.errorStatus(error));
-		res.send(JSON.stringify(error));
-	});
-});
-
-// Create a new user
-// TODO: check to see if the user exists in Foxy, first
-app.post('/users', (req, res) => {
-	let post = req.body;
-
-	post.email = post.field[3];
-	post.phone = post.field[2];
-	post.firstName = post.field[0];
-	post.lastName = post.field[1];
-	post.birthday = post.Date;
-	post.emailNotifications = post["checkbox-2"][0] == "on" ? true : false;
-	post.textNotifications = post["checkbox-2"][1] == "on" ? true : false;
-	post.password = post["password-2"];
-
-	foxy.customerExists(post.email).then(foxyCustomer => {
-		if (foxyCustomer) {
-			foxy.validateCustomer(post.email, post.password, foxyCustomer).then(foxyValidCustomer => {
-				if (! foxyValidCustomer) {
-					var i = 1;
-					// return an error, reset the password, etc
-				}
-			});
-		}
-
-		dutchie.consumerSignup(
-			post.email,
-			post.password,
-			post.birthday,
-			post.emailNotifications,
-			post.firstName,
-			post.lastName,
-			post.phone,
-			post.textNotifications
-		).then(response => {
-			res.send(JSON.stringify(response));
-		}).catch(error => {
-			res.status(dutchie.errorStatus(error));
-			res.send(JSON.stringify(error));
-		});
-	});
-});
-
-// Update user
-// TODO: implement method
-app.put('/users/:id', (req, res) => {
 });
 
 // Get all orders for a user
