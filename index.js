@@ -9,16 +9,23 @@ const port = 3000;
 const CryptoJSAesJson = require('./crypto-js-aes');
 const Dutchie = require('./dutchie-client');
 const Foxy = require('./foxy-client');
+const Alpine = require('node-rest-client').Client;
 
 const cookieKey = process.env.cookieKey;
-const token = 'public-eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJBUEktQ0xJRU5UIiwiZXhwIjozMzIwNjYyNjg4NSwiaWF0IjoxNjQ5NzE4MDg1LCJpc3MiOiJodHRwczovL2R1dGNoaWUuY29tIiwianRpIjoiNzVkMzcyOGUtYTRkOC00MTliLTg5YzktNmI2MzRkOWVjOWRhIiwiZW50ZXJwcmlzZV9pZCI6IjE3MmY2NWMzLTczZTctNDU5ZC1hZTM1LTA4OTdiMjE2MDI3OCIsInV1aWQiOiI2NzVmYWRlOC03YWU3LTQ2NmEtOTAyYS1iOTQ4NjQ0ZjhmMWYifQ.JcqHRAMTyB_cF6uVQ-4toM3K3njIkX-dMvUUfxznIrY';
-const retailerId = "48763c11-5642-48ed-9b17-17852c4fd88f";
-const dispensaryId = "624d9bb115779400a5b3e4f4";
+const dutchie_token = 'public-eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJBUEktQ0xJRU5UIiwiZXhwIjozMzIwNjYyNjg4NSwiaWF0IjoxNjQ5NzE4MDg1LCJpc3MiOiJodHRwczovL2R1dGNoaWUuY29tIiwianRpIjoiNzVkMzcyOGUtYTRkOC00MTliLTg5YzktNmI2MzRkOWVjOWRhIiwiZW50ZXJwcmlzZV9pZCI6IjE3MmY2NWMzLTczZTctNDU5ZC1hZTM1LTA4OTdiMjE2MDI3OCIsInV1aWQiOiI2NzVmYWRlOC03YWU3LTQ2NmEtOTAyYS1iOTQ4NjQ0ZjhmMWYifQ.JcqHRAMTyB_cF6uVQ-4toM3K3njIkX-dMvUUfxznIrY';
+const dutchie_retailerId = "48763c11-5642-48ed-9b17-17852c4fd88f";
+const dutchie_dispensaryId = "624d9bb115779400a5b3e4f4";
+const dutchie_admin_user = process.env.dutchie_admin_user;
+const dutchie_admin_pass = process.env.dutchie_admin_pass;
 
 const foxy_client_id     = process.env.foxy_client_id;
 const foxy_client_secret = process.env.foxy_client_secret;
 const foxy_access_token  = process.env.foxy_access_token;
 const foxy_refresh_token = process.env.foxy_refresh_token;
+
+const alpine_store_id = 1656;
+const alpine_api_key = process.env.alpine_api_key;
+const alpineArgs = { headers: { "X-APIKEY": alpine_api_key, "Content-Type": "application/json" }};
 
 // Secure cookie
 const secCookieOpts = {
@@ -35,8 +42,9 @@ const sameSiteCookieOpts = {
 	sameSite: 'none'
 }
 
-const dutchie = new Dutchie(retailerId, dispensaryId, token);
+const dutchie = new Dutchie(dutchie_retailerId, dutchie_dispensaryId, dutchie_token, dutchie_admin_user, dutchie_admin_pass);
 const foxy = new Foxy(foxy_refresh_token, foxy_client_secret, foxy_client_id);
+const alpine = new Alpine();
 
 const corsOptions = {
 	origin: 'https://tj-the-revolution-6206508ef5c2d17ee4134.webflow.io',
@@ -64,50 +72,204 @@ app.get('/users', (req, res) => {
 	dutchie.meConsumer().then(response => {
 		res.send(JSON.stringify(response));
 	}).catch(error => {
+		if (typeof(error.message) !== 'undefined' && error.message.toLowerCase() == 'graphql error: no user found') {
+			response = {data: {meConsumer: {id: '0'}}};
+			res.send(JSON.stringify(response));
+		}
+		else {
+			res.status(dutchie.errorStatus(error));
+			res.send(JSON.stringify(error));
+		}
+	});
+});
+
+
+// Get all orders for a user
+app.get('/dispensaries', (req, res) => {
+	let cookies = parseCookies(req.headers.cookie);
+	dutchie.accessToken = cookies.dutchie_access_token;
+
+	dutchie.retailerName().then(response => {
+		res.send(JSON.stringify(response));
+	}).catch(error => {
 		res.status(dutchie.errorStatus(error));
 		res.send(JSON.stringify(error));
 	});
 });
 
 // Create a new user
-// TODO: check to see if the user exists in Foxy, first
 app.post('/users', (req, res) => {
 	let post = req.body;
+	post.emailNotifications = post.email_subscribe == "on" ? true : false;
+	post.textNotifications = post.sms_subscribe == "on" ? true : false;
 
-	post.email = post.field[3];
-	post.phone = post.field[2];
-	post.firstName = post.field[0];
-	post.lastName = post.field[1];
-	post.birthday = post.Date;
-	post.emailNotifications = post["checkbox-2"][0] == "on" ? true : false;
-	post.textNotifications = post["checkbox-2"][1] == "on" ? true : false;
-	post.password = post["password-2"];
-
+	// Check to see if customer exists in Foxy
 	foxy.customerExists(post.email).then(foxyCustomer => {
 		if (foxyCustomer) {
 			foxy.validateCustomer(post.email, post.password, foxyCustomer).then(foxyValidCustomer => {
+				// Customer exists, but the password was wrong
 				if (! foxyValidCustomer) {
 					var i = 1;
 					// return an error, reset the password, etc
+					// res.status(response.statusCode);
+					res.send(JSON.stringify({message: "TODO: send an error message"}));
+				}
+				// Password was correct - create Dutchie and Alpine accounts
+				else {
+
 				}
 			});
 		}
+		// Customer does not exist in Foxy
+		else {
+			// Check to see if customer exists in Dutchie
+			dutchie.dispensaryCustomers(post.email).then(response => {
+				let customer = response.data.dispensaryCustomers.customers.filter(function(customer, index, arr) {
+					if (customer.email == post.email && customer.source == 'User') return arr;
+				}, post.email);
 
-		dutchie.consumerSignup(
-			post.email,
-			post.password,
-			post.birthday,
-			post.emailNotifications,
-			post.firstName,
-			post.lastName,
-			post.phone,
-			post.textNotifications
-		).then(response => {
-			res.send(JSON.stringify(response));
-		}).catch(error => {
-			res.status(dutchie.errorStatus(error));
-			res.send(JSON.stringify(error));
-		});
+				// Dutchie account exists
+				if (customer.length == 1) {
+					// Try to log in to Dutchie
+					dutchie.loginConsumer(post.email, post.password).then(response => {
+						// Check to see if customer exists in Alpine
+						alpine.get("https://lab.alpineiq.com/api/v1.1/piis/" + alpine_store_id + "?search=email:" + post.email, alpineArgs, function (data, response) {
+							// Customer does not exist in Alpine; create a new Alpine contact
+							if (data.code == 200 && data.data.results == null) {
+								// The retailer name is required for creating an Alpine contact (favoriteStore)
+								dutchie.retailerName().then(retailerName => {
+									args = {
+										//"address": "2205 W 136th Avenue, Broomfield, CO, 80023",
+										//"customAttributes": [{"parent": "","key": "EmployeeSignup","value": "Josh","ts": null}],
+										headers: alpineArgs.headers,
+										data: {
+											email: post.email,
+											favoriteStore: retailerName.data.retailer.name,
+											firstName: post.first_name,
+											lastName: post.last_name,
+											loyalty: true,
+											mobilePhone: post.phone
+										}
+									};
+									alpine.post("https://lab.alpineiq.com/api/v2/loyalty", args, function (data, response) {
+										// Failed to create Alpine contact
+										if (response.statusCode != 200) {
+											res.status(response.statusCode);
+											res.send(JSON.stringify({message: "TODO: send an error message"}));
+										}
+										// Successfully created Alpine contact
+										else {
+											// No need to do anything
+										}
+									});
+								}).catch(error => {
+									// Really? Failed to get the retailer name?
+									res.status(dutchie.errorStatus(error));
+									res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+								});
+							}
+							else if (data.code != 200) {
+								// Throw an error
+								let e = 1;
+							}
+							// Customer exists in Alpine
+							else {
+								// No need to do anything
+							}
+							let i = 1;
+							// Customer exists (sign the user in?)
+							// TODO: Redirect the customer to a success page
+						});
+					}).catch(error => {
+						// Incorrect Dutchie email/password)
+						if (
+							dutchie.errorStatus(error) == 422 &&
+							dutchie.errorMessage(error) == "You've entered an incorrect email or password. Please try again."
+						) {
+							// Redirect the user to reset the password
+							res.status(dutchie.errorStatus(error));
+							res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+						}
+						else {
+							res.status(dutchie.errorStatus(error));
+							res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+						}
+					});
+				}
+				else {
+
+
+
+
+					// Customer doesn't exist in Dutchie
+					dutchie.consumerSignup(
+						post.email,
+						post.password,
+						post.birthday,
+						post.email_subscribe == "on" ? true : false,
+						post.first_name,
+						post.last_name,
+						post.phone,
+						post.sms_subscribe == "on" ? true : false
+					).then(response => {
+						// Check to see if customer exists in Alpine
+						alpine.get("https://lab.alpineiq.com/api/v1.1/piis/" + alpine_store_id + "?search=email:" + post.email, alpineArgs, function (data, response) {
+							// Customer does not exist in Alpine; create a new Alpine contact
+							if (data.code == 200 && data.data.results == null) {
+								// The retailer name is required for creating an Alpine contact (favoriteStore), so we get it here
+								dutchie.retailerName().then(retailerName => {
+									args = {
+										//"address": "2205 W 136th Avenue, Broomfield, CO, 80023",
+										//"customAttributes": [{"parent": "","key": "EmployeeSignup","value": "Josh","ts": null}],
+										headers: alpineArgs.headers,
+										data: {
+											email: post.email,
+											favoriteStore: retailerName.data.retailer.name,
+											firstName: post.first_name,
+											lastName: post.last_name,
+											loyalty: true,
+											mobilePhone: post.phone
+										}
+									};
+									alpine.post("https://lab.alpineiq.com/api/v2/loyalty", args, function (data, response) {
+										// Failed to create Alpine contact
+										if (response.statusCode != 200) {
+											res.status(response.statusCode);
+											res.send(JSON.stringify({message: "TODO: send an error message"}));
+										}
+										// Successfully created Alpine contact
+										else {
+											// TODO: Redirect the customer to a success page
+											let i = 1;
+										}
+									});
+								}).catch(error => {
+									// Really? Failed to get the retailer name?
+									res.status(dutchie.errorStatus(error));
+									res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+								});
+							}
+							else if (data.code != 200) {
+								// Throw an error
+								let e = 1;
+							}
+							// Customer exists in Alpine
+							else {
+								// No need to do anything
+							}
+							// TODO: Redirect the customer to a success page
+							let i = 1;
+						});
+					}).catch(error => {
+						res.status(dutchie.errorStatus(error));
+						res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+					});
+				}
+			}).catch(error => {
+				res.status(dutchie.errorStatus(error));
+				res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+			});
+		}
 	});
 });
 
@@ -137,7 +299,8 @@ app.post('/users/login', (req, res) => {
 			res.cookie('dutchie_user_id', response.data.loginConsumer.user.id, sameSiteCookieOpts);
 		}
 
-		res.redirect(handleRedirect(req, post.redirect));
+		//res.redirect(handleRedirect(req, post.redirect));
+		response.message = "Successfully logged in."
 		res.send(JSON.stringify(response));
 	},(req)).catch(error => {
 		if (dutchie.errorStatus(error) == 422) {
@@ -156,14 +319,14 @@ app.post('/users/login', (req, res) => {
 							transaction._embedded['fx:custom_fields'].forEach(function(field, key) {
 								switch(field.name) {
 									case 'birthday':
-									  birthday = field.value;
-									  break;
+										birthday = field.value;
+										break;
 									case 'sms_subscribe':
 										textNotifications = field.value;
-									  break;
+										break;
 									case 'newsletter_subscribe':
 										emailNotifications = field.value;
-								  }
+									}
 							});
 
 							dutchie.consumerSignup(
@@ -176,7 +339,7 @@ app.post('/users/login', (req, res) => {
 								post.phone,
 								textNotifications
 							).then(response => {
-					
+
 								res.send(JSON.stringify(response));
 							}).catch(error => {
 								res.status(dutchie.errorStatus(error));
@@ -203,7 +366,7 @@ app.get('/users/:id/orders', (req, res) => {
 	let cookies = parseCookies(req.headers.cookie);
 	dutchie.accessToken = cookies.dutchie_access_token;
 
-	dutchie.filteredOrders({"userId":userId}, {"sortBy":"createdAt","sortDirection":"desc"}, {"limit":20}).then(response => {
+	dutchie.filteredOrders_custom({"userId":userId}, {"sortBy":"createdAt","sortDirection":"desc"}, {"limit":20}).then(response => {
 		res.send(JSON.stringify(response));
 	}).catch(error => {
 		res.status(dutchie.errorStatus(error));
@@ -213,13 +376,15 @@ app.get('/users/:id/orders', (req, res) => {
 
 // Submit an order
 app.post('/users/:userId/orders/:orderId', (req, res) => {
-	let userId = req.params.userId;
-	let orderId = req.params.orderId;
+	let post = req.body;
+	if (typeof(req.params.userId) === 'undefined') {
+		post.userId = 0;
+	}
+	post.orderId = req.params.orderId;
 	let cookies = parseCookies(req.headers.cookie);
 	dutchie.accessToken = cookies.dutchie_access_token;
 
-	dutchie.createOrder(orderId, userId).then(response => {
-//	dutchie.createOrder({"userId":userId}, {"sortBy":"createdAt","sortDirection":"desc"}, {"limit":20}).then(response => {
+	dutchie.createOrder(post).then(response => {
 		res.send(JSON.stringify(response));
 	}).catch(error => {
 		res.status(dutchie.errorStatus(error));

@@ -7,9 +7,10 @@ provider:
   stage: prod
   region: us-east-1
   httpApi:
-    cors: true
-    #disableDefaultEndpoint: true
-    #metrics: true
+    cors:
+      allowedOrigins:
+        - 'https://tj-the-revolution-6206508ef5c2d17ee4134.webflow.io'
+      allowCredentials: true
 
 functions:
   app:

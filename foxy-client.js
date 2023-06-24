@@ -35,7 +35,7 @@ class Foxy {
 				return customer;
 			}
 		}
-	
+
 		return false;
 	}
 
@@ -53,7 +53,7 @@ class Foxy {
 		if (customers.total_items == 1) {
 			return customers._embedded["fx:customers"].pop()
 		}
-	
+
 		return false;
 	}
 }
