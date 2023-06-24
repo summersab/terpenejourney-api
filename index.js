@@ -112,7 +112,7 @@ app.post('/users', (req, res) => {
 					var i = 1;
 					// return an error, reset the password, etc
 					// res.status(response.statusCode);
-					res.send(JSON.stringify({message: "TODO: send an error message"}));
+					res.send(JSON.stringify({message: "Account already exists or incorrect password."}));
 				}
 				// Password was correct - create Dutchie and Alpine accounts
 				else {
@@ -148,14 +148,16 @@ app.post('/users', (req, res) => {
 											firstName: post.first_name,
 											lastName: post.last_name,
 											loyalty: true,
-											mobilePhone: post.phone
+											mobilePhone: post.phone,
+											smsoptin: post.textNotifications,
+											disableSMS: post.textNotifications
 										}
 									};
 									alpine.post("https://lab.alpineiq.com/api/v2/loyalty", args, function (data, response) {
 										// Failed to create Alpine contact
 										if (response.statusCode != 200) {
 											res.status(response.statusCode);
-											res.send(JSON.stringify({message: "TODO: send an error message"}));
+											res.send(JSON.stringify({message: "Registration failure - could not create Alpine account."}));
 										}
 										// Successfully created Alpine contact
 										else {
@@ -197,10 +199,6 @@ app.post('/users', (req, res) => {
 					});
 				}
 				else {
-
-
-
-
 					// Customer doesn't exist in Dutchie
 					dutchie.consumerSignup(
 						post.email,
@@ -228,19 +226,21 @@ app.post('/users', (req, res) => {
 											firstName: post.first_name,
 											lastName: post.last_name,
 											loyalty: true,
-											mobilePhone: post.phone
+											mobilePhone: post.phone,
+											smsoptin: post.textNotifications,
+											disableSMS: post.textNotifications
 										}
 									};
 									alpine.post("https://lab.alpineiq.com/api/v2/loyalty", args, function (data, response) {
 										// Failed to create Alpine contact
 										if (response.statusCode != 200) {
 											res.status(response.statusCode);
-											res.send(JSON.stringify({message: "TODO: send an error message"}));
+											res.send(JSON.stringify({message: "Registration failure - could not create Alpine account."}));
 										}
 										// Successfully created Alpine contact
 										else {
 											// TODO: Redirect the customer to a success page
-											let i = 1;
+											res.send(JSON.stringify({message: "Successfully registered!"}));
 										}
 									});
 								}).catch(error => {
@@ -256,8 +256,9 @@ app.post('/users', (req, res) => {
 							// Customer exists in Alpine
 							else {
 								// No need to do anything
+								let i = 1;
 							}
-							// TODO: Redirect the customer to a success page
+							// TODO: Redirect the customer to a success page?
 							let i = 1;
 						});
 					}).catch(error => {
