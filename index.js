@@ -47,11 +47,43 @@ const dutchie = new Dutchie(dutchie_retailerId, dutchie_dispensaryId, dutchie_pu
 const foxy = new Foxy(foxy_refresh_token, foxy_client_secret, foxy_client_id);
 const alpine = new Alpine();
 
+var allowedOrigins = [
+	'https://tj-the-revolution-6206508ef5c2d17ee4134.webflow.io',
+	'https://terpenejourney.com',
+	'https://www.terpenejourney.com',
+	'https://dev2.terpenejourney.com'
+];
+
 const corsOptions = {
-	origin: 'https://tj-the-revolution-6206508ef5c2d17ee4134.webflow.io',
+	//origin: 'https://tj-the-revolution-6206508ef5c2d17ee4134.webflow.io',
+	origin: function(origin, callback) {
+		// allow requests with no origin 
+		// (like mobile apps or curl requests)
+		if(!origin) return callback(null, true);
+		if(allowedOrigins.indexOf(origin) === -1){
+			var msg = 'The CORS policy for this site does not ' +
+				'allow access from the specified Origin.';
+			return callback(new Error(msg), false);
+		}
+		return callback(null, true);
+	},
 	credentials: true,
 	optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
 }
+
+app.use(cors({
+	origin: function(origin, callback) {
+		// allow requests with no origin 
+		// (like mobile apps or curl requests)
+		if(!origin) return callback(null, true);
+		if(allowedOrigins.indexOf(origin) === -1){
+			var msg = 'The CORS policy for this site does not ' +
+								'allow access from the specified Origin.';
+			return callback(new Error(msg), false);
+		}
+		return callback(null, true);
+	}
+}));
 
 app.options('*', cors(corsOptions));
 app.use(cors(corsOptions));
