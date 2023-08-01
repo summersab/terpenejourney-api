@@ -3685,6 +3685,55 @@ module.exports.dispensaryCustomers = gql`
 	}
 `;
 
+module.exports.customersQuery = gql`
+	query customersQuery(
+		$retailerId: ID!
+		$filter: CustomersFilter!
+	) {
+		customers(
+			retailerId: $retailerId
+			filter: $filter
+		) {
+			birthdate
+			email
+			guest
+			id
+			medicalCard {
+				expirationDate
+				number
+				photo
+				state
+			}
+			name
+			optIns {
+				marketing
+				orderStatus
+				specials
+			}
+			phone
+		}
+	}
+`;
+
+module.exports.filteredOrdersPlus = gql`
+	${fragments.orderFragment}
+	query filteredOrdersPlus(
+		$retailerId: ID!
+		$filter: OrdersFilter
+		$pagination: Pagination
+		$sort: OrdersSort
+	) {
+		orders(
+			retailerId: $retailerId
+			filter: $filter
+			pagination: $pagination
+			sort: $sort
+		) {
+			...orderFragment
+		}
+	}
+`;
+
 module.exports.dispensaryInfoModalFilteredDispensaries = gql`
 	${fragments.hourSetFragment}
 	query DispensaryInfoModalFilteredDispensaries(
@@ -5812,7 +5861,7 @@ module.exports.filteredSubscriptions = gql`
 `;
 
 module.exports.filteredTerpenes = gql`
-	${fragments.TerpeneFragment}
+	${fragments.terpeneFragment}
 	query FilteredTerpenes(
 		$filter: terpenesFilter
 		$sort: terpenesSort
@@ -5821,7 +5870,7 @@ module.exports.filteredTerpenes = gql`
 			filter: $filter
 			sort: $sort
 		) {
-			...TerpeneFragment
+			...terpeneFragment
 			strains {
 				_id
 			}
@@ -8144,14 +8193,14 @@ module.exports.retailerBillingOverview = gql`
 `;
 
 module.exports.getTerpene = gql`
-	${fragments.TerpeneFragment}
+	${fragments.terpeneFragment}
 	query GetTerpene(
 		$id: String!
 	) {
 		getTerpene(
 			id: $id
 		) {
-			...TerpeneFragment
+			...terpeneFragment
 		}
 	}
 `;
@@ -9645,97 +9694,10 @@ module.exports.superProducts = gql`
 `;
 
 module.exports.terpeneFragmentmenuQuery = gql`
-	fragment terpeneFragment on Terpene {
-		aliasList
-		aromas
-		description
-		effects
-		id
-		name
-		potentialHealthBenefits
-		unitSymbol
-	}
-	fragment activeTerpeneFragment on ActiveTerpene {
-		id
-		terpene {
-			...terpeneFragment
-		}
-		name
-		terpeneId
-		unit
-		unitSymbol
-		value
-	}
-	fragment activeCannabinoidFragment on ActiveCannabinoid {
-		cannabinoidId
-		cannabinoid {
-			description
-			id
-			name
-		}
-		unit
-		value
-	}
-	fragment productFragment on Product {
-		brand {
-			description
-			id
-			imageUrl
-			name
-		}
-		category
-		description
-		descriptionHtml
-		effects
-		enterpriseProductId
-		id
-		productBatchId
-		image
-		images {
-			id
-			url
-			label
-			description
-		}
-		menuTypes
-		name
-		slug
-		posId
-		potencyCbd {
-			formatted
-			range
-			unit
-		}
-		potencyThc {
-			formatted
-			range
-			unit
-		}
-		posMetaData {
-			id
-			category
-			sku
-		}
-		staffPick
-		strainType
-		subcategory
-		tags
-		variants {
-			id
-			option
-			priceMed
-			priceRec
-			specialPriceMed
-			specialPriceRec
-			quantity
-		}
-		terpenes {
-			...activeTerpeneFragment
-		}
-		cannabinoids {
-			...activeCannabinoidFragment
-		}
-	}
+	${fragments.terpeneFragment}
+	${fragments.activeTerpeneFragment}
+	${fragments.activeCannabinoidFragment}
+	${fragments.productFragment}
 	query MenuQuery(
 		$retailerId: ID!
 	) {
@@ -10965,3 +10927,23 @@ module.exports.verifyBucketProducts = gql`
 	}
 `;
 
+module.exports.ordersByCreatedAt = gql`
+	${fragments.orderFragment}
+	query OrdersByCreatedAt(
+		$retailerId: ID!
+		$startDate: DateTime
+		$endDate: DateTime
+	) {
+		orders(
+			filter: {
+				createdAt: {
+					start: $startDate,
+					end: $endDate
+				}
+			},
+			retailerId: $retailerId
+		) {
+			...orderFragment
+		}
+	}
+`;

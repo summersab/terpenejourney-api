@@ -2137,8 +2137,8 @@ module.exports.taxProperties = gql`
 	}
 `;
 
-module.exports.TerpeneFragment = gql`
-	fragment TerpeneFragment on Terpene {
+module.exports.terpeneFragment = gql`
+	fragment terpeneFragment on Terpene {
 		aliasList
 		aromas
 		description
@@ -2147,5 +2147,160 @@ module.exports.TerpeneFragment = gql`
 		name
 		unitSymbol
 		potentialHealthBenefits
+	}
+`;
+
+module.exports.activeTerpeneFragment = gql`
+	${module.exports.terpeneFragment}
+	fragment activeTerpeneFragment on ActiveTerpene {
+		id
+		terpene {
+			...terpeneFragment
+		}
+		name
+		terpeneId
+		unit
+		unitSymbol
+		value
+	}
+	`;
+
+module.exports.activeCannabinoidFragment = gql`
+	fragment activeCannabinoidFragment on ActiveCannabinoid {
+		cannabinoidId
+		cannabinoid {
+			description
+			id
+			name
+		}
+		unit 
+		value
+	}
+	`;
+
+module.exports.productFragment = gql`
+	${module.exports.activeTerpeneFragment}
+	${module.exports.activeCannabinoidFragment}
+	fragment productFragment on Product {
+		brand {
+			description
+			id
+			imageUrl
+			name
+		}
+		category
+		description
+		descriptionHtml
+		effects
+		enterpriseProductId
+		id
+		productBatchId
+		image
+		images {
+			id
+			url
+			label
+			description
+		}
+		menuTypes
+		name
+		slug
+		posId
+		potencyCbd {
+			formatted
+			range
+			unit
+		}
+		potencyThc {
+			formatted
+			range
+			unit
+		}
+		posMetaData {
+			id
+			category
+			sku
+		}
+		staffPick
+		strainType
+		subcategory
+		tags
+		variants {
+			id
+			option
+			priceMed
+			priceRec
+			specialPriceMed
+			specialPriceRec
+			quantity
+		}
+		terpenes {
+			...activeTerpeneFragment
+		}
+		cannabinoids {
+			...activeCannabinoidFragment
+		}
+	}
+`;
+
+module.exports.customerFragment = gql`
+	fragment customerFragment on Customer {
+		birthdate
+		email
+		guest
+		id
+		medicalCard {
+			expirationDate
+			number
+			photo
+			state
+		}
+		name
+		optIns {
+			marketing
+			orderStatus
+			specials
+		}
+		phone
+	}
+`;
+
+module.exports.orderFragment = gql`
+	${module.exports.customerFragment}
+	${module.exports.productFragment}
+	fragment orderFragment on Order {
+		createdAt
+		customer {
+			...customerFragment
+		}
+		customerId
+		delivery
+		dispensaryName
+		foreignId
+		id
+		items {
+			option
+			price
+			product {
+				...productFragment
+			}
+			productId
+			quantity
+			subtotal
+		}
+		medical
+		metadata
+		orderNumber
+		paymentMethod
+		pickup
+		recreational
+		reservationDate {
+			startTime
+			endTime
+		}
+		status
+		subtotal
+		tax
+		total
 	}
 `;

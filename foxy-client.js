@@ -25,7 +25,7 @@ class Foxy {
 
 	async validateCustomer(email, password, customer = null) {
 		if (customer === null) {
-			const customer = this.customerExists(email)
+			var customer = await this.customerExists(email)
 		}
 
 		if (customer !== false) {
@@ -51,7 +51,29 @@ class Foxy {
 		const customers = await customersResponse.json();
 
 		if (customers.total_items == 1) {
-			return customers._embedded["fx:customers"].pop()
+			return customers._embedded["fx:customers"][0]
+		}
+
+		return false;
+	}
+
+	async customerOrders(email) {
+		const customersNode = this.client.follow('fx:store').follow('fx:customers');
+		const customersResponse = await customersNode.get({
+			filters: [
+				'is_anonymous=false',
+				`email=${email}`
+			]
+		});
+
+		const customers = await customersResponse.json();
+
+		if (customers.total_items == 1) {
+			const customer = customers._embedded["fx:customers"][0];
+			const transactions = await customer._links['fx:transactions'].get().then(async r => {
+				return await r.json();
+			});
+			return transactions;
 		}
 
 		return false;

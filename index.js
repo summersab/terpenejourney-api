@@ -12,7 +12,8 @@ const Foxy = require('./foxy-client');
 const Alpine = require('node-rest-client').Client;
 
 const cookieKey = process.env.cookieKey;
-const dutchie_token = 'public-eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJBUEktQ0xJRU5UIiwiZXhwIjozMzIwNjYyNjg4NSwiaWF0IjoxNjQ5NzE4MDg1LCJpc3MiOiJodHRwczovL2R1dGNoaWUuY29tIiwianRpIjoiNzVkMzcyOGUtYTRkOC00MTliLTg5YzktNmI2MzRkOWVjOWRhIiwiZW50ZXJwcmlzZV9pZCI6IjE3MmY2NWMzLTczZTctNDU5ZC1hZTM1LTA4OTdiMjE2MDI3OCIsInV1aWQiOiI2NzVmYWRlOC03YWU3LTQ2NmEtOTAyYS1iOTQ4NjQ0ZjhmMWYifQ.JcqHRAMTyB_cF6uVQ-4toM3K3njIkX-dMvUUfxznIrY';
+const dutchie_public_token = 'public-eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJBUEktQ0xJRU5UIiwiZXhwIjozMzIwNjYyNjg4NSwiaWF0IjoxNjQ5NzE4MDg1LCJpc3MiOiJodHRwczovL2R1dGNoaWUuY29tIiwianRpIjoiNzVkMzcyOGUtYTRkOC00MTliLTg5YzktNmI2MzRkOWVjOWRhIiwiZW50ZXJwcmlzZV9pZCI6IjE3MmY2NWMzLTczZTctNDU5ZC1hZTM1LTA4OTdiMjE2MDI3OCIsInV1aWQiOiI2NzVmYWRlOC03YWU3LTQ2NmEtOTAyYS1iOTQ4NjQ0ZjhmMWYifQ.JcqHRAMTyB_cF6uVQ-4toM3K3njIkX-dMvUUfxznIrY';
+const dutchie_secret_token = process.env.dutchie_secret_token;
 const dutchie_retailerId = "48763c11-5642-48ed-9b17-17852c4fd88f";
 const dutchie_dispensaryId = "624d9bb115779400a5b3e4f4";
 const dutchie_admin_user = process.env.dutchie_admin_user;
@@ -42,7 +43,7 @@ const sameSiteCookieOpts = {
 	sameSite: 'none'
 }
 
-const dutchie = new Dutchie(dutchie_retailerId, dutchie_dispensaryId, dutchie_token, dutchie_admin_user, dutchie_admin_pass);
+const dutchie = new Dutchie(dutchie_retailerId, dutchie_dispensaryId, dutchie_public_token, dutchie_secret_token);
 const foxy = new Foxy(foxy_refresh_token, foxy_client_secret, foxy_client_id);
 const alpine = new Alpine();
 
@@ -73,7 +74,7 @@ app.get('/users', (req, res) => {
 		res.send(JSON.stringify(response));
 	}).catch(error => {
 		if (typeof(error.message) !== 'undefined' && error.message.toLowerCase() == 'graphql error: no user found') {
-			response = {data: {meConsumer: {id: '0'}}};
+			response = {data: {user: {id: '0'}}};
 			res.send(JSON.stringify(response));
 		}
 		else {
@@ -100,6 +101,8 @@ app.get('/dispensaries', (req, res) => {
 // Create a new user
 app.post('/users', (req, res) => {
 	let post = req.body;
+	let cookies = parseCookies(req.headers.cookie);
+
 	post.emailNotifications = post.email_subscribe == "on" ? true : false;
 	post.textNotifications = post.sms_subscribe == "on" ? true : false;
 
@@ -109,33 +112,18 @@ app.post('/users', (req, res) => {
 			foxy.validateCustomer(post.email, post.password, foxyCustomer).then(foxyValidCustomer => {
 				// Customer exists, but the password was wrong
 				if (! foxyValidCustomer) {
-					var i = 1;
 					// return an error, reset the password, etc
 					// res.status(response.statusCode);
 					res.send(JSON.stringify({message: "Account already exists or incorrect password."}));
 				}
 				// Password was correct - create Dutchie and Alpine accounts
 				else {
-
-				}
-			});
-		}
-		// Customer does not exist in Foxy
-		else {
-			// Check to see if customer exists in Dutchie
-			dutchie.dispensaryCustomers(post.email).then(response => {
-				let customer = response.data.dispensaryCustomers.customers.filter(function(customer, index, arr) {
-					if (customer.email == post.email && customer.source == 'User') return arr;
-				}, post.email);
-
-				// Dutchie account exists
-				if (customer.length == 1) {
 					// Try to log in to Dutchie
-					dutchie.loginConsumer(post.email, post.password).then(response => {
+					dutchie.loginConsumer(post.email, post.password).then(dutchieLoginResponse => {
 						// Check to see if customer exists in Alpine
-						alpine.get("https://lab.alpineiq.com/api/v1.1/piis/" + alpine_store_id + "?search=email:" + post.email, alpineArgs, function (data, response) {
+						alpine.get("https://lab.alpineiq.com/api/v1.1/piis/" + alpine_store_id + "?search=email:" + post.email, alpineArgs, function (alpineData, alpineResponse) {
 							// Customer does not exist in Alpine; create a new Alpine contact
-							if (data.code == 200 && data.data.results == null) {
+							if (alpineData.code == 200 && alpineData.data.results == null) {
 								// The retailer name is required for creating an Alpine contact (favoriteStore)
 								dutchie.retailerName().then(retailerName => {
 									args = {
@@ -150,7 +138,8 @@ app.post('/users', (req, res) => {
 											loyalty: true,
 											mobilePhone: post.phone,
 											smsoptin: post.textNotifications,
-											disableSMS: post.textNotifications
+											disableSMS: post.textNotifications,
+											emailOptIn: post.emailNotifications
 										}
 									};
 									alpine.post("https://lab.alpineiq.com/api/v2/loyalty", args, function (data, response) {
@@ -161,7 +150,8 @@ app.post('/users', (req, res) => {
 										}
 										// Successfully created Alpine contact
 										else {
-											// No need to do anything
+											// Customer exists (sign the user in)
+											dutchieLoginResponseHandler(req, res, dutchieLoginResponse);
 										}
 									});
 								}).catch(error => {
@@ -170,17 +160,15 @@ app.post('/users', (req, res) => {
 									res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
 								});
 							}
-							else if (data.code != 200) {
+							else if (alpineData.code != 200) {
 								// Throw an error
-								let e = 1;
+								res.status(data.code);
+								res.send(JSON.stringify(data));
 							}
-							// Customer exists in Alpine
 							else {
-								// No need to do anything
+								// Customer exists (sign the user in)
+								dutchieLoginResponseHandler(req, res, dutchieLoginResponse);
 							}
-							let i = 1;
-							// Customer exists (sign the user in?)
-							// TODO: Redirect the customer to a success page
 						});
 					}).catch(error => {
 						// Incorrect Dutchie email/password)
@@ -188,9 +176,76 @@ app.post('/users', (req, res) => {
 							dutchie.errorStatus(error) == 422 &&
 							dutchie.errorMessage(error) == "You've entered an incorrect email or password. Please try again."
 						) {
-							// Redirect the user to reset the password
-							res.status(dutchie.errorStatus(error));
-							res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+							// Customer LIKELY doesn't exist in Dutchie - try signing up
+							dutchie.consumerSignup(
+								post.email,
+								post.password,
+								post.birthday,
+								post.email_subscribe == "on" ? true : false,
+								post.first_name,
+								post.last_name,
+								post.phone,
+								post.sms_subscribe == "on" ? true : false
+							).then(dutchieSignupResponse => {
+								// Check to see if customer exists in Alpine
+								alpine.get("https://lab.alpineiq.com/api/v1.1/piis/" + alpine_store_id + "?search=email:" + post.email, alpineArgs, function (data, response) {
+									// Customer does not exist in Alpine; create a new Alpine contact
+									if (data.code == 200 && data.data.results == null) {
+										// The retailer name is required for creating an Alpine contact (favoriteStore), so we get it here
+										dutchie.retailerName().then(retailerName => {
+											args = {
+												//"address": "2205 W 136th Avenue, Broomfield, CO, 80023",
+												//"customAttributes": [{"parent": "","key": "EmployeeSignup","value": "Josh","ts": null}],
+												headers: alpineArgs.headers,
+												data: {
+													email: post.email,
+													favoriteStore: retailerName.data.retailer.name,
+													firstName: post.first_name,
+													lastName: post.last_name,
+													loyalty: true,
+													mobilePhone: post.phone,
+													smsoptin: post.textNotifications,
+													disableSMS: post.textNotifications,
+													emailOptIn: post.emailNotifications
+												}
+											};
+											alpine.post("https://lab.alpineiq.com/api/v2/loyalty", args, function (data, response) {
+												// Failed to create Alpine contact
+												if (response.statusCode != 200) {
+													res.status(response.statusCode);
+													res.send(JSON.stringify({message: "Registration failure - could not create Alpine account."}));
+												}
+												// Successfully created Alpine contact
+												else {
+													// Customer exists (sign the user in)
+													//dutchieSignupResponse.data.loginConsumer = dutchieSignupResponse.data.consumerSignup;
+													//delete(dutchieSignupResponse.data.consumerSignup)
+													dutchieLoginResponseHandler(req, res, dutchieSignupResponse);
+												}
+											});
+										}).catch(error => {
+											// Really? Failed to get the retailer name?
+											res.status(dutchie.errorStatus(error));
+											res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+										});
+									}
+									else if (data.code != 200) {
+										// Throw an error
+										res.status(data.code);
+										res.send();
+									}
+									else {
+										// Customer exists (sign the user in)
+										//dutchieSignupResponse.data.loginConsumer = dutchieSignupResponse.data.consumerSignup;
+										//delete(dutchieSignupResponse.data.consumerSignup)
+										dutchieLoginResponseHandler(req, res, dutchieSignupResponse);
+									}		
+								});
+							// Customer DOES exist in Dutchie - trying to sign up using existing username?
+							}).catch(error => {
+								res.status(dutchie.errorStatus(error));
+								res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+							});
 						}
 						else {
 							res.status(dutchie.errorStatus(error));
@@ -198,8 +253,69 @@ app.post('/users', (req, res) => {
 						}
 					});
 				}
-				else {
-					// Customer doesn't exist in Dutchie
+			});
+		}
+		// Customer does not exist in Foxy
+		else {
+			// Try to log in to Dutchie
+			dutchie.loginConsumer(post.email, post.password).then(dutchieLoginResponse => {
+				// Check to see if customer exists in Alpine
+				alpine.get("https://lab.alpineiq.com/api/v1.1/piis/" + alpine_store_id + "?search=email:" + post.email, alpineArgs, function (alpineData, alpineResponse) {
+					// Customer does not exist in Alpine; create a new Alpine contact
+					if (alpineData.code == 200 && alpineData.data.results == null) {
+						// The retailer name is required for creating an Alpine contact (favoriteStore)
+						dutchie.retailerName().then(retailerName => {
+							args = {
+								//"address": "2205 W 136th Avenue, Broomfield, CO, 80023",
+								//"customAttributes": [{"parent": "","key": "EmployeeSignup","value": "Josh","ts": null}],
+								headers: alpineArgs.headers,
+								data: {
+									email: post.email,
+									favoriteStore: retailerName.data.retailer.name,
+									firstName: post.first_name,
+									lastName: post.last_name,
+									loyalty: true,
+									mobilePhone: post.phone,
+									smsoptin: post.textNotifications,
+									disableSMS: post.textNotifications,
+									emailOptIn: post.emailNotifications
+								}
+							};
+							alpine.post("https://lab.alpineiq.com/api/v2/loyalty", args, function (data, response) {
+								// Failed to create Alpine contact
+								if (response.statusCode != 200) {
+									res.status(response.statusCode);
+									res.send(JSON.stringify({message: "Registration failure - could not create Alpine account."}));
+								}
+								// Successfully created Alpine contact
+								else {
+									// Customer exists (sign the user in)
+									dutchieLoginResponseHandler(req, res, dutchieLoginResponse);
+								}
+							});
+						}).catch(error => {
+							// Really? Failed to get the retailer name?
+							res.status(dutchie.errorStatus(error));
+							res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+						});
+					}
+					else if (alpineData.code != 200) {
+						// Throw an error
+						res.status(data.code);
+						res.send(JSON.stringify(data));
+					}
+					else {
+						// Customer exists (sign the user in)
+						dutchieLoginResponseHandler(req, res, dutchieLoginResponse);
+					}
+				});
+			}).catch(error => {
+				// Incorrect Dutchie email/password)
+				if (
+					dutchie.errorStatus(error) == 422 &&
+					dutchie.errorMessage(error) == "You've entered an incorrect email or password. Please try again."
+				) {
+					// Customer LIKELY doesn't exist in Dutchie - try signing up
 					dutchie.consumerSignup(
 						post.email,
 						post.password,
@@ -209,7 +325,7 @@ app.post('/users', (req, res) => {
 						post.last_name,
 						post.phone,
 						post.sms_subscribe == "on" ? true : false
-					).then(response => {
+					).then(dutchieSignupResponse => {
 						// Check to see if customer exists in Alpine
 						alpine.get("https://lab.alpineiq.com/api/v1.1/piis/" + alpine_store_id + "?search=email:" + post.email, alpineArgs, function (data, response) {
 							// Customer does not exist in Alpine; create a new Alpine contact
@@ -228,7 +344,8 @@ app.post('/users', (req, res) => {
 											loyalty: true,
 											mobilePhone: post.phone,
 											smsoptin: post.textNotifications,
-											disableSMS: post.textNotifications
+											disableSMS: post.textNotifications,
+											emailOptIn: post.emailNotifications
 										}
 									};
 									alpine.post("https://lab.alpineiq.com/api/v2/loyalty", args, function (data, response) {
@@ -239,8 +356,10 @@ app.post('/users', (req, res) => {
 										}
 										// Successfully created Alpine contact
 										else {
-											// TODO: Redirect the customer to a success page
-											res.send(JSON.stringify({message: "Successfully registered!"}));
+											// Customer exists (sign the user in)
+											//dutchieSignupResponse.data.loginConsumer = dutchieSignupResponse.data.consumerSignup;
+											//delete(dutchieSignupResponse.data.consumerSignup)
+											dutchieLoginResponseHandler(req, res, dutchieSignupResponse);
 										}
 									});
 								}).catch(error => {
@@ -251,24 +370,26 @@ app.post('/users', (req, res) => {
 							}
 							else if (data.code != 200) {
 								// Throw an error
-								let e = 1;
+								res.status(data.code);
+								res.send();
 							}
-							// Customer exists in Alpine
 							else {
-								// No need to do anything
-								let i = 1;
-							}
-							// TODO: Redirect the customer to a success page?
-							let i = 1;
+								// Customer exists (sign the user in)
+								//dutchieSignupResponse.data.loginConsumer = dutchieSignupResponse.data.consumerSignup;
+								//delete(dutchieSignupResponse.data.consumerSignup)
+								dutchieLoginResponseHandler(req, res, dutchieSignupResponse);
+							}		
 						});
+					// Customer DOES exist in Dutchie - trying to sign up using existing username?
 					}).catch(error => {
 						res.status(dutchie.errorStatus(error));
 						res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
 					});
 				}
-			}).catch(error => {
-				res.status(dutchie.errorStatus(error));
-				res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+				else {
+					res.status(dutchie.errorStatus(error));
+					res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+				}
 			});
 		}
 	});
@@ -283,28 +404,21 @@ app.post('/users/login', (req, res) => {
 	let post = req.body;
 	let cookies = parseCookies(req.headers.cookie);
 
+	if (typeof(post.email) === 'undefined' &&
+		typeof(post.password) === 'undefined'
+	) {
+		res.status(417);
+		res.send(JSON.stringify({message: "No email or password provided."}));
+	}
+
 	dutchie.loginConsumer(post.email, post.password).then(response => {
-		delete(response.data.loginConsumer.transferToken);
-
-		if (cookies.dutchie_access_token == '-1') {
-			res.cookie('dutchie_access_token', response.data.loginConsumer.accessToken, secCookieOpts);
-			res.cookie('dutchie_user_id', response.data.loginConsumer.user.id, secCookieOpts);
-			delete(response.data.loginConsumer.accessToken);
-		}
-		else {
-			c = new CryptoJSAesJson();
-			let encrypted = c.encrypt(response.data.loginConsumer.accessToken, cookieKey);
-			response.data.loginConsumer.accessToken = "enc." + encrypted;
-
-			res.cookie('dutchie_access_token', response.data.loginConsumer.accessToken, sameSiteCookieOpts);
-			res.cookie('dutchie_user_id', response.data.loginConsumer.user.id, sameSiteCookieOpts);
-		}
-
-		//res.redirect(handleRedirect(req, post.redirect));
-		response.message = "Successfully logged in."
-		res.send(JSON.stringify(response));
+		dutchieLoginResponseHandler(req, res, response);
 	},(req)).catch(error => {
-		if (dutchie.errorStatus(error) == 422) {
+		// Incorrect Dutchie email/password) - try Foxy
+		if (
+			dutchie.errorStatus(error) == 422 &&
+			dutchie.errorMessage(error) == "You've entered an incorrect email or password. Please try again."
+		) {
 			foxy.validateCustomer(post.email, post.password).then(customer => {
 				if (customer) {
 					customer._links['fx:transactions'].get({
@@ -333,24 +447,80 @@ app.post('/users/login', (req, res) => {
 							dutchie.consumerSignup(
 								post.email,
 								post.password,
-								birthday,
-								emailNotifications,
-								post.firstName,
-								post.lastName,
-								post.phone,
-								textNotifications
-							).then(response => {
-
-								res.send(JSON.stringify(response));
+								dutchie.formatDate(new Date(birthday)),
+								emailNotifications == "1" ? true : false,
+								transaction.customer_first_name,
+								transaction.customer_first_name,
+								dutchie.formatPhoneNumber(transaction._embedded["fx:billing_addresses"][0].customer_phone),
+								textNotifications == "1" ? true : false
+							).then(dutchieSignupResponse => {
+								// Check to see if customer exists in Alpine
+								alpine.get("https://lab.alpineiq.com/api/v1.1/piis/" + alpine_store_id + "?search=email:" + post.email, alpineArgs, function (data, response) {
+									// Customer does not exist in Alpine; create a new Alpine contact
+									if (data.code == 200 && data.data.results == null) {
+										// The retailer name is required for creating an Alpine contact (favoriteStore), so we get it here
+										dutchie.retailerName().then(retailerName => {
+											args = {
+												//"address": "2205 W 136th Avenue, Broomfield, CO, 80023",
+												//"customAttributes": [{"parent": "","key": "EmployeeSignup","value": "Josh","ts": null}],
+												headers: alpineArgs.headers,
+												data: {
+													email: post.email,
+													favoriteStore: retailerName.data.retailer.name,
+													firstName: transaction.customer_first_name,
+													lastName: transaction.customer_first_name,
+													loyalty: true,
+													mobilePhone: dutchie.formatPhoneNumber(transaction._embedded["fx:billing_addresses"][0].customer_phone),
+													smsoptin: textNotifications == "1" ? true : false,
+													disableSMS: textNotifications == "1" ? true : false,
+													emailOptIn: emailNotifications == "1" ? true : false
+												}
+											};
+											alpine.post("https://lab.alpineiq.com/api/v2/loyalty", args, function (data, response) {
+												// Failed to create Alpine contact
+												if (response.statusCode != 200) {
+													res.status(response.statusCode);
+													res.send(JSON.stringify({message: "Registration failure - could not create Alpine account."}));
+												}
+												// Successfully created Alpine contact
+												else {
+													// Customer exists (sign the user in)
+													//dutchieSignupResponse.data.loginConsumer = dutchieSignupResponse.data.consumerSignup;
+													//delete(dutchieSignupResponse.data.consumerSignup)
+													dutchieLoginResponseHandler(req, res, dutchieSignupResponse);
+												}
+											});
+										}).catch(error => {
+											// Really? Failed to get the retailer name?
+											res.status(dutchie.errorStatus(error));
+											res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+										});
+									}
+									else if (data.code != 200) {
+										// Throw an error
+										res.status(data.code);
+										res.send();
+									}
+									else {
+										// Customer exists (sign the user in)
+										//dutchieSignupResponse.data.loginConsumer = dutchieSignupResponse.data.consumerSignup;
+										//delete(dutchieSignupResponse.data.consumerSignup)
+										dutchieLoginResponseHandler(req, res, dutchieSignupResponse);
+									}		
+								});
 							}).catch(error => {
 								res.status(dutchie.errorStatus(error));
 								res.send(JSON.stringify(error));
 							});
 
-							res.send(transactions);
+							//res.send(transactions);
 						});
 				}
-			}).catch(error => {
+				else {
+					res.status(dutchie.errorStatus(error));
+					res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+				}
+			}, dutchie).catch(error => {
 				res.send(JSON.stringify(error));
 			});
 		}
@@ -361,18 +531,99 @@ app.post('/users/login', (req, res) => {
 	});
 });
 
+app.post('/users/logout', (req, res) => {
+	let cookies = parseCookies(req.headers.cookie);
+	dutchie.accessToken = cookies.dutchie_access_token;
+
+	dutchie.logout().then(response => {
+		if (req.cookies.dutchie_access_token.startsWith('enc.')) {
+			res.cookie('dutchie_access_token', '', Object.assign(JSON.parse(JSON.stringify(sameSiteCookieOpts)), { expires: new Date(1), path: '/', maxAge: 0 }));
+			res.cookie('dutchie_user_id', '', Object.assign(JSON.parse(JSON.stringify(sameSiteCookieOpts)), { expires: new Date(1), path: '/', maxAge: 0 }));
+		}
+		else {
+			res.clearCookie("dutchie_access_token", secCookieOpts);
+			res.clearCookie("dutchie_user_id", secCookieOpts);
+		}
+
+		res.send({message: "Successfully logged out."});
+		res.end();	
+	}).catch(error => {
+		res.status(dutchie.errorStatus(error));
+		res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+	});
+})
+
 // Get all orders for a user
 app.get('/users/:id/orders', (req, res) => {
 	let userId = req.params.id;
 	let cookies = parseCookies(req.headers.cookie);
 	dutchie.accessToken = cookies.dutchie_access_token;
+/***
+	const foxyOrders = foxy.customerOrders('andrew@platypusinnovations.com').then(response => {
+		response._embedded['fx:transactions'].forEach(function(transaction) {
+			const dateCreatedEpoch = new Date(transaction.date_created).getTime()/1000.0;
+			const startDate = new Date((dateCreatedEpoch - 5) * 1000).toISOString();
+			const endDate = new Date((dateCreatedEpoch + 5) * 1000).toISOString();
 
-	dutchie.filteredOrders_custom({"userId":userId}, {"sortBy":"createdAt","sortDirection":"desc"}, {"limit":20}).then(response => {
+			const variables = {
+				filter: {
+					customerId: userId//,
+//					createdAt: {
+//						start: "2023-01-01T00:00:00Z",  // start date inclusive
+//						end: "2023-03-01T00:00:00Z"  // end date exclusive
+//					},
+//					orderNumber: "1234",
+//					search: "Joe"
+				},
+				pagination: {
+					offset: 0,
+					limit: 50
+				},
+				sort: {
+					direction: ASC,
+					key: CREATED_AT
+				}
+			};
+
+			dutchie.getOrders(variables).then(response => {
+				let i = 1;
+			}).catch(error => {
+				res.status(dutchie.errorStatus(error));
+				res.send(JSON.stringify(error));
+			});
+
+		})
+		let i = 1;
+	});
+/***/
+/***/
+	const variables = {
+		filter: {
+			customerId: userId//,
+//			createdAt: {
+//				start: "2023-01-01T00:00:00Z",  // start date inclusive
+//				end: "2023-03-01T00:00:00Z"  // end date exclusive
+//			},
+//			orderNumber: "1234",
+//			search: "Joe"
+		},
+		pagination: {
+			offset: 0,
+			limit: 50
+		},
+		sort: {
+			direction: 'ASC',
+			key: 'CREATED_AT'
+		}
+	};
+
+	dutchie.getOrders(variables).then(response => {
 		res.send(JSON.stringify(response));
 	}).catch(error => {
 		res.status(dutchie.errorStatus(error));
 		res.send(JSON.stringify(error));
 	});
+/***/
 });
 
 // Submit an order
@@ -381,6 +632,10 @@ app.post('/users/:userId/orders/:orderId', (req, res) => {
 	if (typeof(req.params.userId) === 'undefined') {
 		post.userId = 0;
 	}
+	else {
+		post.userId = req.params.userId;
+	}
+
 	post.orderId = req.params.orderId;
 	let cookies = parseCookies(req.headers.cookie);
 	dutchie.accessToken = cookies.dutchie_access_token;
@@ -409,6 +664,30 @@ if (! os.userInfo().username.startsWith('sbx_user')) {
 	app.listen(port, () => {
 		console.log('Express is listening on port 3000');
 	});
+}
+
+function dutchieLoginResponseHandler(req, res, dutchieResponse) {
+	let cookies = parseCookies(req.headers.cookie);
+
+	//dutchieResponse.data = dutchieResponse.data.loginConsumer;
+	delete(dutchieResponse.data.transferToken);
+
+	if (cookies.dutchie_access_token == '-1') {
+		res.cookie('dutchie_access_token', dutchieResponse.data.accessToken, secCookieOpts);
+		res.cookie('dutchie_user_id', dutchieResponse.data.user.id, secCookieOpts);
+		delete(dutchieResponse.data.accessToken);
+	}
+	else {
+		c = new CryptoJSAesJson();
+		let encrypted = c.encrypt(dutchieResponse.data.accessToken, cookieKey);
+		dutchieResponse.data.accessToken = "enc." + encrypted;
+
+		res.cookie('dutchie_access_token', dutchieResponse.data.accessToken, sameSiteCookieOpts);
+		res.cookie('dutchie_user_id', dutchieResponse.data.user.id, sameSiteCookieOpts);
+	}
+
+	dutchieResponse.message = "Successfully logged in."
+	res.send(JSON.stringify(dutchieResponse));
 }
 
 function handleRedirect(req, redirect) {

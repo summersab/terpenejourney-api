@@ -20,9 +20,8 @@ const queries = require('./queries');
 class Dutchie {
 	retailerId = null;
 	dispensaryId = null;
-	token = null;
-	adminUser = null;
-	adminPass = null;
+	publicToken = null;
+	secretToken = null;
 
 	accessToken = null;
 	refreshToken = null;
@@ -32,15 +31,14 @@ class Dutchie {
 	authClientGet = null;
 	plusClient = null;
 
-	constructor(retailerId, dispensaryId, token, adminUser = null, adminPass = null) {
+	constructor(retailerId, dispensaryId, publicToken, secretToken) {
 		this.retailerId = retailerId;
 		this.dispensaryId = dispensaryId;
-		this.token = token;
-		this.adminUser = adminUser;
-		this.adminPass = adminPass;
+		this.publicToken = publicToken;
+		this.secretToken = secretToken;
 
 		this.client = this.dutchieClient();
-		this.plusClient = this.dutchiePlusClient(this.token);
+		this.plusClient = this.dutchiePlusClient(this.publicToken);
 	}
 
 	async menuQuery() {
@@ -71,7 +69,7 @@ class Dutchie {
 	}
 
 	async loginConsumer(email, password) {
-		return await this.stripTypename(
+		let res = await this.stripTypename(
 			await this.client.mutate({
 				variables: {
 					email: `${email}`,
@@ -82,18 +80,38 @@ class Dutchie {
 				throw error;
 			})
 		);
+
+		res.data = res.data.loginConsumer;
+		//delete(res.data.loginConsumer);
+		return res;
+	}
+
+	async logout() {
+		this.authClient = this.dutchieAuthClient(this.accessToken);
+
+		return await this.stripTypename(
+			await this.authClient.mutate({
+				mutation: queries.logout
+			}).catch(error => {
+				throw error;
+			})
+		);
 	}
 
 	async meConsumer() {
 		this.authClientGet = this.dutchieAuthClientGet(this.accessToken);
 
-		return await this.stripTypename(
+		let res = await this.stripTypename(
 			await this.authClientGet.query({
 				query: queries.meConsumer
 			}).catch(error => {
 				throw error;
 			})
 		);
+
+		res.data.user = res.data.meConsumer;
+		delete(res.data.meConsumer);
+		return res;
 	}
 
 	async filteredDispensaries() {
@@ -120,15 +138,12 @@ class Dutchie {
 		);
 	}
 
-	async filteredOrders(ordersFilter, ordersSort, ordersPagination) {
+	/* No longer needed?
+	async filteredOrders_custom(variables) {
 		this.authClientGet = this.dutchieAuthClientGet(this.accessToken);
 
 		return await this.authClientGet.query({
-			variables: {
-				ordersFilter: ordersFilter,
-				ordersSort: ordersSort,
-				ordersPagination: ordersPagination
-			},
+			variables: variables,
 			query: queries.filteredOrders_custom
 		}).then(async response => {
 			response.data.filteredOrders.orders.forEach(function(order, key, arr) {
@@ -139,6 +154,23 @@ class Dutchie {
 		}).catch(error => {
 			throw error;
 		});
+	}
+	*/
+
+	async getOrders(variables) {
+		//return await this.loginConsumer(this.adminUser, this.adminPass).then(async response => {
+		//	this.authClientGet = this.dutchieAuthClientGet(response.data.loginConsumer.accessToken);
+			this.plusClient = this.dutchiePlusClient(this.secretToken);
+			variables.retailerId = this.retailerId;
+			return await this.stripTypename(
+				await this.plusClient.query({
+					variables: variables,
+					query: queries.filteredOrdersPlus
+				}).catch(error => {
+					throw error;
+				})
+			);
+		//});
 	}
 
 	async createOrder(post) {
@@ -231,7 +263,7 @@ class Dutchie {
 				phone:      this.formatPhoneNumber(post.phone)
 			};
 
-			client = this.dutchieClient;
+			client = this.client;
 		}
 		else {
 			vars.input.checkoutId = post.orderId;
@@ -258,34 +290,22 @@ class Dutchie {
 		});
 	}
 
-	async dispensaryCustomers(searchTerm) {
-		return await this.loginConsumer(this.adminUser, this.adminPass).then(async response => {
-			this.authClientGet = this.dutchieAuthClientGet(response.data.loginConsumer.accessToken);
+	async customersQuery(searchTerm) {
+		this.plusClient = this.dutchiePlusClient(this.secretToken);
 
-			return await this.stripTypename(
-				await this.authClientGet.query({
-					query: queries.dispensaryCustomers,
-					variables: {
-						"customersFilter": {
-							"dispensaryId": this.dispensaryId,
-							"search": searchTerm
-						},
-						"customersSort": {
-							"sortBy": "source",
-							"sortDirection": "desc"
-						},
-						"customersPagination": {
-							"offset": 0,
-							"limit": 100
-						}
+		return await this.stripTypename(
+			await this.plusClient.query({
+				query: queries.customersQuery,
+				variables: {
+					"retailerId": this.retailerId,
+					"filter": {
+						"email": searchTerm
 					}
-				}).catch(error => {
-					throw error;
-				})
-			);
-		}).catch(error => {
-			throw error;
-		});
+				}
+			}).catch(error => {
+				throw error;
+			})
+		);
 	}
 
 	async consumerSignup(email, password, birthday, emailNotifications, firstName, lastName, phone, textNotifications) {
@@ -311,7 +331,7 @@ class Dutchie {
 			}
 		};
 
-		return await this.client.mutate({
+		let res = await this.client.mutate({
 			variables: variables,
 			mutation: queries.consumerSignup
 		}).then(async response => {
@@ -319,6 +339,10 @@ class Dutchie {
 		}).catch(async error => {
 			throw await error;
 		});
+
+		res.data = res.data.consumerSignup;
+		//delete(res.data.consumerSignup);
+		return res;
 	}
 
 	errorStatus(error) {
@@ -381,6 +405,14 @@ class Dutchie {
 			typeof(error.graphQLErrors) !== 'undefined' &&
 			error.graphQLErrors !== null &&
 			typeof(error.graphQLErrors[0]) !== 'undefined' &&
+			typeof(error.graphQLErrors[0].message) !== 'undefined'
+		) {
+			return 200;
+		}
+		else if (
+			typeof(error.graphQLErrors) !== 'undefined' &&
+			error.graphQLErrors !== null &&
+			typeof(error.graphQLErrors[0]) !== 'undefined' &&
 			typeof(error.graphQLErrors[0].extensions) !== 'undefined' &&
 			typeof(error.graphQLErrors[0].extensions.code) !== 'undefined' &&
 			Object.keys(errorMap).includes(error.graphQLErrors[0].extensions.code)
@@ -415,6 +447,14 @@ class Dutchie {
 			typeof(error.graphQLErrors[0].extensions.errors[0]) !== 'undefined'
 		) {
 			return error.graphQLErrors[0].extensions.errors[0].detail;
+		}
+		else if (
+			typeof(error.graphQLErrors) !== 'undefined' &&
+			error.graphQLErrors !== null &&
+			typeof(error.graphQLErrors[0]) !== 'undefined' &&
+			typeof(error.graphQLErrors[0].message) !== 'undefined'
+		) {
+			return error.graphQLErrors[0].message;
 		}
 		else if (
 			error.networkError !== null &&
