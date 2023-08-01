@@ -47,23 +47,21 @@ const dutchie = new Dutchie(dutchie_retailerId, dutchie_dispensaryId, dutchie_pu
 const foxy = new Foxy(foxy_refresh_token, foxy_client_secret, foxy_client_id);
 const alpine = new Alpine();
 
-var allowedOrigins = [
+var whitelist = [
 	'https://tj-the-revolution-6206508ef5c2d17ee4134.webflow.io',
 	'https://terpenejourney.com',
 	'https://www.terpenejourney.com',
 	'https://dev2.terpenejourney.com'
 ];
 
-const corsOptions = {
-	//origin: 'https://tj-the-revolution-6206508ef5c2d17ee4134.webflow.io',
-	origin: function(origin, callback) {
-		// allow requests with no origin 
-		// (like mobile apps or curl requests)
-		if(!origin) return callback(null, true);
-		if(allowedOrigins.indexOf(origin) === -1){
-			return callback(null, false);
+var corsOptions = {
+//	origin: 'https://tj-the-revolution-6206508ef5c2d17ee4134.webflow.io',
+	origin: function (origin, callback) {
+		if (whitelist.indexOf(origin) !== -1) {
+			callback(null, true)
+		} else {
+			callback(new Error('Not allowed by CORS'))
 		}
-		return callback(null, true);
 	},
 	credentials: true,
 	optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
