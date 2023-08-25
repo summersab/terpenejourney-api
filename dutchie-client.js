@@ -98,6 +98,21 @@ class Dutchie {
 		);
 	}
 
+	async sendPasswordResetEmailV2(email) {
+		let res = await this.stripTypename(
+			await this.client.mutate({
+				variables: {
+					email: `${email}`
+				},
+				mutation: queries.sendPasswordResetEmailV2
+			}).catch(error => {
+				throw error;
+			})
+		);
+
+		return res;
+	}
+
 	async meConsumer() {
 		this.authClientGet = this.dutchieAuthClientGet(this.accessToken);
 
@@ -290,12 +305,12 @@ class Dutchie {
 		});
 	}
 
-	async customersQuery(searchTerm) {
+	async customersQueryByEmail(searchTerm) {
 		this.plusClient = this.dutchiePlusClient(this.secretToken);
 
 		return await this.stripTypename(
 			await this.plusClient.query({
-				query: queries.customersQuery,
+				query: queries.customersQueryByEmail,
 				variables: {
 					"retailerId": this.retailerId,
 					"filter": {

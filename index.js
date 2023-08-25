@@ -23,6 +23,7 @@ const foxy_client_id     = process.env.foxy_client_id;
 const foxy_client_secret = process.env.foxy_client_secret;
 const foxy_access_token  = process.env.foxy_access_token;
 const foxy_refresh_token = process.env.foxy_refresh_token;
+const foxy_store_id      = 101371;
 
 const alpine_store_id = 1656;
 const alpine_api_key = process.env.alpine_api_key;
@@ -55,19 +56,20 @@ var whitelist = [
 ];
 
 var corsOptions = {
-//	origin: 'https://tj-the-revolution-6206508ef5c2d17ee4134.webflow.io',
 	origin: function (origin, callback) {
-		callback(null, true);
-//		if (whitelist.indexOf(origin) !== -1) {
-//			callback(null, true)
-//		} else {
-//			callback(new Error('Not allowed by CORS'))
-//		}
+		// bypass the requests with no origin (like curl requests, mobile apps, etc )
+		if (!origin) return callback(null, true);
+
+		if (whitelist.indexOf(origin) !== -1) {
+			callback(null, true)
+		} else {
+			callback(new Error('Not allowed by CORS'))
+		}
 	},
 	credentials: true,
 	optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
 }
-
+ 
 app.options('*', cors(corsOptions));
 app.use(cors(corsOptions));
 app.use(cookieParser("secret"));
@@ -413,6 +415,72 @@ app.post('/users', (req, res) => {
 // Update user
 // TODO: implement method
 app.put('/users/:id', (req, res) => {
+});
+
+app.post('/users/resetpassword', (req, res) => {
+	let post = req.body;
+
+	if (typeof(post.email) === 'undefined') {
+		res.status(417);
+		res.send(JSON.stringify({message: "No email provided."}));
+		return;
+	}
+
+	foxy.customerExists(post.email).then(foxyCustomer => {
+		if (foxyCustomer) {
+
+			fetch(`https://checkout.terpenejourney.com/v/2.0.0/api_json.php?store_id=${foxy_store_id}&customer_email=${post.email}&ThisAction=SendPassword`, {
+				"method": "GET"
+			}).then(resp => {
+				var message = resp.body;
+
+				if (resp.status == 200) {
+					res.status(200);
+					res.send(JSON.stringify({message: "Please check your email for a temporary password."}));
+				}
+				else {
+					res.status(404);
+					res.send(JSON.stringify({message: "Error sending password reset for Foxy user account.."}));	
+				}
+			}).catch(error => {
+				res.status(404);
+				res.send(JSON.stringify({message: "Error sending password reset for Foxy user account."}));
+			});
+		}
+		else {
+			dutchie.customersQueryByEmail(post.email).then(dutchieCustomer => {
+				if (dutchieCustomer.data.customers.length !== 1) {
+					res.status(404);
+					res.send(JSON.stringify({message: "No account exists for this email address."}));
+				}
+				else {
+					dutchie.sendPasswordResetEmailV2(post.email).then(resp => {
+						if (
+							typeof(resp.data) === 'object' &&
+							typeof(resp.data.sendPasswordResetEmailV2) === 'object' &&
+							resp.data.sendPasswordResetEmailV2.success
+						) {
+							res.status(200);
+							res.send(JSON.stringify({message: "Please check your email to reset your password."}));
+						}
+						else {
+							res.status(404);
+							res.send(JSON.stringify({message: "No account exists for this email address."}));
+						}
+					}).catch(error => {
+						res.status(dutchie.errorStatus(error));
+						res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+					});
+				}
+			}).catch(error => {
+				res.status(dutchie.errorStatus(error));
+				res.send(JSON.stringify({message: dutchie.errorMessage(error)}));
+			});
+		}
+	}).catch(error => {
+		res.status(404);
+		res.send(JSON.stringify({message: "Error sending password reset for Foxy user account."}));
+	});
 });
 
 app.post('/users/login', (req, res) => {

@@ -3685,7 +3685,7 @@ module.exports.dispensaryCustomers = gql`
 	}
 `;
 
-module.exports.customersQuery = gql`
+module.exports.customersQueryByEmail = gql`
 	query customersQuery(
 		$retailerId: ID!
 		$filter: CustomersFilter!
