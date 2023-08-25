@@ -1,9 +1,9 @@
 name: Deploy Production
-# on main branch updates
+# on master branch updates
 on:
     push:
         branches:
-            - main
+            - master
 jobs:
     deploy:
         runs-on: ubuntu-latest
