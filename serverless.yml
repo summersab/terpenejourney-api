@@ -27,13 +27,13 @@ functions:
           - 'https://dev2.terpenejourney.com'
         allowCredentials: true
     environment:
-        cookieKey:${self:custom.environment.cookieKey}
-        foxy_access_token:${self:custom.environment.foxy_access_token}
-        foxy_client_id:${self:custom.environment.foxy_client_id}
-        foxy_client_secret:${self:custom.environment.foxy_client_secret}
-        foxy_refresh_token:${self:custom.environment.foxy_refresh_token}
-        alpine_api_key:${self:custom.environment.alpine_api_key}
-        dutchie_secret_token:${self:custom.environment.dutchie_secret_token}
+        cookieKey: ${self:custom.environment.cookieKey}
+        foxy_access_token: ${self:custom.environment.foxy_access_token}
+        foxy_client_id: ${self:custom.environment.foxy_client_id}
+        foxy_client_secret: ${self:custom.environment.foxy_client_secret}
+        foxy_refresh_token: ${self:custom.environment.foxy_refresh_token}
+        alpine_api_key: ${self:custom.environment.alpine_api_key}
+        dutchie_secret_token: ${self:custom.environment.dutchie_secret_token}
     events:
     - httpApi:
         method: GET
