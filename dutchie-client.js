@@ -420,14 +420,6 @@ class Dutchie {
 			typeof(error.graphQLErrors) !== 'undefined' &&
 			error.graphQLErrors !== null &&
 			typeof(error.graphQLErrors[0]) !== 'undefined' &&
-			typeof(error.graphQLErrors[0].message) !== 'undefined'
-		) {
-			return 200;
-		}
-		else if (
-			typeof(error.graphQLErrors) !== 'undefined' &&
-			error.graphQLErrors !== null &&
-			typeof(error.graphQLErrors[0]) !== 'undefined' &&
 			typeof(error.graphQLErrors[0].extensions) !== 'undefined' &&
 			typeof(error.graphQLErrors[0].extensions.code) !== 'undefined' &&
 			Object.keys(errorMap).includes(error.graphQLErrors[0].extensions.code)
@@ -446,6 +438,14 @@ class Dutchie {
 			typeof(error[0].name) !== 'undefined'
 		) {
 			return errorMap[error[0].name.toUpperCase()];
+		}
+		else if (
+			typeof(error.graphQLErrors) !== 'undefined' &&
+			error.graphQLErrors !== null &&
+			typeof(error.graphQLErrors[0]) !== 'undefined' &&
+			typeof(error.graphQLErrors[0].message) !== 'undefined'
+		) {
+			return 200;
 		}
 		else {
 			return 404;
